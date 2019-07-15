@@ -7,9 +7,11 @@ public interface EntityHelper<T> {
 
 	void validate(ValidationContext<T> context);
 
-	void callActions(T entity);
+	boolean onCreate(T obj);
 
-	boolean onCreate(T entity);
-	boolean onUpdate(T entity);
-	boolean onDelete(T entity);
+	boolean onUpdate(T obj, T old);
+
+	boolean onDelete(T obj);
+
+	T clone(T entity);
 }

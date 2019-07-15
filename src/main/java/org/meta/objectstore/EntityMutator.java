@@ -1,7 +1,11 @@
 package org.meta.objectstore;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -22,8 +26,15 @@ public class EntityMutator {
 	private Set<DatabaseObject> saveDuplicates;
 	private boolean isInConversion;
 
+	private final Map<DatabaseObject, DatabaseObject> clones = new HashMap<>();
 
 	private ValidationContextImpl context;
+
+	static ThreadLocal<EntityMutator> threadLocalMutator = new ThreadLocal<>();
+
+	static EntityMutator get() {
+		return threadLocalMutator.get();
+	}
 
 	EntityMutator(EntityManager manager, Map<String, EntityHelper<?>> entityHelpers) {
 		this.manager = manager;
@@ -32,9 +43,8 @@ public class EntityMutator {
 		this.saveDuplicates = new HashSet<DatabaseObject>();
 		this.deleteQueue = new HashSet<DatabaseObject>();
 		context = new ValidationContextImpl<>();
+		threadLocalMutator.set(this);
 	}
-
-
 
 	public void saveOrUpdate(DatabaseObject obj) {
 		if (obj instanceof CreatableObject) {
@@ -57,8 +67,8 @@ public class EntityMutator {
 		saveDuplicates.clear();
 		while (iterator.hasNext()) {
 			DatabaseObject next = iterator.next();
-			if(!saveInternal(next)) {
-				return false; 
+			if (!saveInternal(next)) {
+				return false;
 			}
 		}
 		if (!saveDuplicates.isEmpty()) {
@@ -91,16 +101,17 @@ public class EntityMutator {
 		}
 		if (!context.hasErrors()) {
 			if (helper != null) {
-				helper.callActions(entity);
+				if (entity.isNew()) {
+					helper.onCreate(entity);
+				} else {
+					helper.onUpdate(entity, entity);
+				}
 			}
 			manager.persist(entity);
 			return true;
 		}
 		return false;
 	}
-	
-	
-
 
 	public boolean delete(DatabaseObject obj) {
 		if (isInConversion) {
@@ -110,7 +121,6 @@ public class EntityMutator {
 		return deleteInternal(obj);
 	}
 
-
 	public void conversionStart() {
 		isInConversion = true;
 	}
@@ -118,13 +128,13 @@ public class EntityMutator {
 	public boolean converstionCompleted() {
 		isInConversion = false;
 		for (DatabaseObject obj : deleteQueue) {
-			if(!deleteInternal(obj)) {
+			if (!deleteInternal(obj)) {
 				return false;
 			}
 		}
 		return true;
 	}
-	
+
 	@SuppressWarnings("unchecked")
 	private <T extends DatabaseObject> boolean deleteInternal(T entity) {
 		if (entity.isDeleted()) {
@@ -136,7 +146,7 @@ public class EntityMutator {
 		context.setEntity(entity);
 		if (!context.hasErrors()) {
 			if (helper != null) {
-				if(!helper.onDelete(entity)) {
+				if (!helper.onDelete(entity)) {
 					return false;
 				}
 			}
@@ -144,5 +154,33 @@ public class EntityMutator {
 			return true;
 		}
 		return false;
+	}
+
+	public <T extends DatabaseObject> void peformDeleteOrphan(Collection<T> oldList, Collection<T> newList) {
+		List<T> deletedList = new ArrayList<T>();
+		for (T t : oldList) {
+			if (!newList.contains(t)) {
+				deletedList.add(t);
+			}
+		}
+		oldList.clear();
+		oldList.addAll(newList);
+		for (T t : deletedList) {
+			this.delete(t);
+		}
+	}
+
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	void processOnLoad(Object entity) {
+		EntityHelper helper = (EntityHelper) this.entityHelpers.get(entity.getClass().getName());
+
+		if (helper != null) {
+			if (clones.containsKey(entity)) {
+				return;
+			}
+			Object clone = helper.clone(entity);
+			clones.put((DatabaseObject) entity, (DatabaseObject) clone);
+		}
+
 	}
 }
