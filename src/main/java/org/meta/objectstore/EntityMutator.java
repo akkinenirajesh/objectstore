@@ -46,6 +46,14 @@ public class EntityMutator {
 		threadLocalMutator.set(this);
 	}
 
+	public void save(DatabaseObject obj) {
+		
+	}
+	
+	public void update(DatabaseObject obj) {
+		
+	}
+	
 	public void saveOrUpdate(DatabaseObject obj) {
 		if (obj instanceof CreatableObject) {
 			CreatableObject creaObj = (CreatableObject) obj;
@@ -113,7 +121,7 @@ public class EntityMutator {
 		return false;
 	}
 
-	public boolean delete(DatabaseObject obj) {
+	public <T extends DatabaseObject> boolean delete(T obj) {
 		if (isInConversion) {
 			deleteQueue.add(obj);
 			return true;
